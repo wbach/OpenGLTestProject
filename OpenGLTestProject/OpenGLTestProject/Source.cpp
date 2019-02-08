@@ -4,6 +4,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/projection.hpp>
 #include "glm/gtc/type_ptr.hpp"
+#include "glm/gtx/transform.hpp"
 #include <glm/gtc/matrix_transform.hpp>
 #include <string>
 #include <fstream>
@@ -28,19 +29,36 @@ unsigned int vertexShader = 0;
 unsigned int fragmentShader = 0;
 unsigned int programId = 0;
 
-glm::mat4 gProjectionMatrix = glm::perspective(50.f, (float)WIDTH / (float)HEIGHT, 0.1f, 1000.f);
-glm::mat4 gViewMatrix = glm::lookAt(glm::vec3(0, 0, -5), glm::vec3(0), glm::vec3(0, 1, 0));
-glm::mat4 gTransformMatix;
-
-
 void CreateShader();
 bool ProcessSdlEvent(SDL_Event& e);
 void CreateQuad(GLuint& vao, GLuint& vbo_indices, GLuint& vbo_vertex, GLuint& vbo_text_coord, int& indices_size);
 void SimpleRenderVao(GLuint vao, int indices, int attributes, GLenum mode);
 void LoadValue(unsigned int loacation, const glm::mat4& value);
+unsigned int CreateShaderBuffer(int size);
+
+struct PerResize
+{
+    int swapDir = true;
+    float a, b, c;
+    glm::vec3 color = glm::vec3(0.1f, 0.8f, 0.2f);
+    float d;
+    glm::mat4 ProjectionMatrix = glm::perspective(50.f, (float)WIDTH / (float)HEIGHT, 0.1f, 1000.f);
+};
+
+struct PerFrame
+{
+    glm::mat4 gViewMatrix = glm::lookAt(glm::vec3(0, 0, -5), glm::vec3(0), glm::vec3(0, 1, 0));
+};
+
+struct PerOject
+{
+    glm::mat4 gTransformMatix;
+};
 
 int main(int, char**)
 {
+    std::cout << sizeof(PerResize) << std::endl;
+
     SDL_Init(SDL_INIT_VIDEO);
     auto window = SDL_CreateWindow("OpenGL test app.", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT, SDL_WINDOW_OPENGL);
     SDL_GL_SetSwapInterval(0);
@@ -57,10 +75,43 @@ int main(int, char**)
 
     CreateQuad(vao, vboi, vbov, vbotx, indices);
 
+
+    auto perResize = CreateShaderBuffer(sizeof(PerResize));
+    glBindBufferBase(GL_UNIFORM_BUFFER, 1, perResize);
+
+    PerResize perResizeBufferData;
+    glBindBuffer(GL_UNIFORM_BUFFER, perResize);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(PerResize), &perResizeBufferData);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    //
+    auto perFrame = CreateShaderBuffer(sizeof(PerFrame));
+    glBindBufferBase(GL_UNIFORM_BUFFER, 2, perFrame);
+
+    PerFrame perFrameBufferData;
+    glBindBuffer(GL_UNIFORM_BUFFER, perFrame);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(PerFrame), glm::value_ptr(perFrameBufferData.gViewMatrix));
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+
+    //
+
+    auto perOject = CreateShaderBuffer(sizeof(PerOject));
+    glBindBufferBase(GL_UNIFORM_BUFFER, 3, perOject);
+
+    PerOject perOjectBufferData;
+    glBindBuffer(GL_UNIFORM_BUFFER, perOject);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(PerOject), glm::value_ptr(perOjectBufferData.gTransformMatix));
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+
     glUseProgram(programId);
-    LoadValue(uniformLocations[Uniforms::ProjectionMatrix], gProjectionMatrix);
-    LoadValue(uniformLocations[Uniforms::ViewMatrix], gViewMatrix);
-    LoadValue(uniformLocations[Uniforms::TransformMatrix], gTransformMatix);
+    //LoadValue(uniformLocations[Uniforms::ProjectionMatrix], gProjectionMatrix);
+    //LoadValue(uniformLocations[Uniforms::ViewMatrix], gViewMatrix);
+    //LoadValue(uniformLocations[Uniforms::TransformMatrix], gTransformMatix);
+
+    glm::vec3 translation(0.01f, 0, 0);
+
     while (run)
     {
         while (SDL_PollEvent(&e))
@@ -76,6 +127,16 @@ int main(int, char**)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glClearColor(bgColor[0], bgColor[1], bgColor[2], bgColor[3]);
 
+        {
+            translation.x += 0.01f;
+            if (translation.x > 8)translation.x = -8;
+            perOjectBufferData.gTransformMatix = glm::translate(translation);
+
+
+            glBindBuffer(GL_UNIFORM_BUFFER, perOject);
+            glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(PerOject), glm::value_ptr(perOjectBufferData.gTransformMatix));
+            glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        }
 
         SimpleRenderVao(vao,indices, 2, GL_TRIANGLES);
 
@@ -275,4 +336,13 @@ void CreateQuad(GLuint& vao, GLuint& vbo_indices, GLuint& vbo_vertex, GLuint& vb
 void LoadValue(unsigned int loacation, const glm::mat4& value)
 {
     glUniformMatrix4fv(loacation, 1, GL_FALSE, glm::value_ptr(value));
+}
+unsigned int CreateShaderBuffer(int size)
+{
+    unsigned int buffer;
+    glGenBuffers(1, &buffer);
+    glBindBuffer(GL_UNIFORM_BUFFER, buffer);
+    glBufferData(GL_UNIFORM_BUFFER, size, NULL, GL_STATIC_DRAW);  // allocate 150 bytes of memory
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    return buffer;
 }
